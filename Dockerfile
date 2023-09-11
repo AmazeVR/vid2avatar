@@ -4,11 +4,15 @@ FROM ${FROM_IMAGE_NAME}
 ADD . /workspace/v2a
 WORKDIR /workspace/v2a
 
-#RUN python -m pip install --no-cache-dir .
+RUN python -m pip install -U pip
+RUN python -m pip install -e ./code
+RUN python -m pip install -r requirement.txt
+# RUN python -m pip uninstall opencv-python
+# RUN python -m pip install opencv-python-headless
 
-ARG UNAME
-ARG UID
-ARG GID
-RUN groupadd -g $GID -o $UNAME
-RUN useradd -m -u $UID -g $GID -o -s /bin/bash $UNAME
-USER $UNAME
+# ARG UNAME
+# ARG UID
+# ARG GID
+# RUN groupadd -g $GID -o $UNAME
+# RUN useradd -m -u $UID -g $GID -o -s /bin/bash $UNAME
+# USER $UNAME

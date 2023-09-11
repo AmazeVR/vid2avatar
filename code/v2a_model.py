@@ -481,6 +481,6 @@ class V2AModel(pl.LightningModule):
         cv2.imwrite(
             f"test_normal/{int(idx.cpu().numpy()):04d}.png", normal[:, :, ::-1])
         cv2.imwrite(
-            f"test_fg_rendering/{int(idx.cpu().numpy()):04d}.png", fg_rgb)
+            f"test_fg_rendering/{int(idx.cpu().numpy()):04d}.png", fg_rgb[:, :, ::-1])
         cv2.imwrite(
-            f"test_depth/{int(idx.cpu().numpy()):04d}.png", depth[:, :, ::-1])
+            f"test_depth/{int(idx.cpu().numpy()):04d}.png", depth)

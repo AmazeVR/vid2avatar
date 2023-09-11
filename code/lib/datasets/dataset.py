@@ -37,17 +37,22 @@ class Dataset(torch.utils.data.Dataset):
         self.mask_paths = [self.mask_paths[i] for i in self.training_indices]
 
         self.shape = np.load(os.path.join(root, "mean_shape.npy"))
-        self.poses = np.zeros_like(
-            np.load(os.path.join(root, "poses.npy"))[self.training_indices]
-        )
-        self.trans = np.zeros_like(
-            np.load(os.path.join(root, "normalize_trans.npy"))[self.training_indices]
-        )
+        # self.poses = np.zeros_like(
+        #     np.load(os.path.join(root, "poses.npy"))[self.training_indices]
+        # )
+        self.poses = np.load(os.path.join(root, "poses.npy"))[
+            self.training_indices]
+        # self.trans = np.zeros_like(
+        #     np.load(os.path.join(root, "normalize_trans.npy"))[self.training_indices]
+        # )
+        self.trans = np.load(os.path.join(root, "normalize_trans.npy"))[
+            self.training_indices]
         # cameras
         start_index = metainfo.start_index
         image_indices = [start_index + i * 3 for i in range(0, self.n_images)]
 
-        self.camera_pos = utils.load_pos_init(metainfo.camera_pos_path, image_indices)
+        self.camera_pos = utils.load_pos_init(
+            metainfo.camera_pos_path, image_indices)
         self.camera_rot = utils.load_rotate_init(
             metainfo.camera_rotate_path, image_indices
         )

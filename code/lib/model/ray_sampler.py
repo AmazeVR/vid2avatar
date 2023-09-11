@@ -64,6 +64,10 @@ class ErrorBoundSampler(RaySampler):
             self.inverse_sphere_sampler = UniformSampler(1.0, 0.0, N_samples_inverse_sphere, False, far=1.0)
 
     def get_z_vals(self, ray_dirs, cam_loc, model, cond, smpl_tfs, eval_mode, smpl_verts):
+        """
+        ray_dir: (b, n_pixels, 3)
+        cam_loc: (n_pixels, 3)
+        """
         beta0 = model.density.get_beta().detach()
 
         # Start with uniform sampling
