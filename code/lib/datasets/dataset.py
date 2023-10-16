@@ -7,6 +7,8 @@ import torch
 from lib.utils import utils
 from scipy.spatial.transform import Rotation as R
 
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+
 
 def flip_y_2d_points(points, y_range=[-1.0, 1.0]):
     """Flip along y values of 2d points array.
@@ -68,7 +70,6 @@ class Dataset(torch.utils.data.Dataset):
         self.start_frame = metainfo.start_frame
         self.end_frame = metainfo.end_frame
         self.skip_step = 1
-        self.images, self.img_sizes = [], []
 
         # images
         img_left_dir = os.path.join(root, "image", "left")
@@ -84,7 +85,7 @@ class Dataset(torch.utils.data.Dataset):
         )
 
         # only store the image paths to avoid OOM
-        self.img_size = cv2.imread(self.img_paths[0]).shape[:2]
+        self.img_size = tuple(metainfo.img_size)
         self.n_images = len(self.img_paths)
 
         # coarse projected SMPL masks, only for sampling
@@ -102,14 +103,17 @@ class Dataset(torch.utils.data.Dataset):
         camera_poses = np.load(os.path.join(root, "camera_pos.npy"))
         camera_rotates = np.load(os.path.join(root, "camera_rotate.npy"))
 
-        assert camera_poses.shape[0] == camera_rotates.shape[0] == len(img_left_paths)
+        assert camera_poses.shape[0] == camera_rotates.shape[0] == len(
+            img_left_paths)
         self.indices = np.concatenate(
             [np.arange(camera_poses.shape[0]), np.arange(camera_poses.shape[0])], axis=0
         )
         camera_poses_right = get_right_camera_pos(camera_poses, camera_rotates)
 
-        camera_poses = np.concatenate([camera_poses, camera_poses_right], axis=0)
-        camera_rotates = np.concatenate([camera_rotates, camera_rotates], axis=0)
+        camera_poses = np.concatenate(
+            [camera_poses, camera_poses_right], axis=0)
+        camera_rotates = np.concatenate(
+            [camera_rotates, camera_rotates], axis=0)
 
         max_distance_from_camera_to_artist = np.linalg.norm(
             np.concatenate([trans, trans], axis=0).squeeze(1) - camera_poses, axis=-1
@@ -138,9 +142,13 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         # normalize RGB
         img = cv2.imread(self.img_paths[idx])
+
         # preprocess: BGR -> RGB -> Normalize
 
         img = img[:, :, ::-1] / 255
+
+        # img = utils.read_image(self.img_paths[idx])
+        # img = utils.clip_and_convert_rgb_to_srgb(img)
 
         mask = cv2.imread(self.mask_paths[idx])
         # preprocess: BGR -> Gray -> Mask
@@ -215,9 +223,6 @@ class Dataset(torch.utils.data.Dataset):
 class ValDataset(torch.utils.data.Dataset):
     def __init__(self, metainfo, split):
         self.dataset = Dataset(metainfo, split)
-        self.img_size = self.dataset.img_size
-
-        self.total_pixels = np.prod(self.img_size)
         self.pixel_per_batch = split.pixel_per_batch
 
     def __len__(self):
@@ -234,14 +239,13 @@ class ValDataset(torch.utils.data.Dataset):
             # "intrinsics": inputs["intrinsics"],
             # "pose": inputs["pose"],
             # "smpl_params": inputs["smpl_params"],
-            "idx": inputs["idx"],
+            "idx": idx,
             "scale": inputs["scale"],
         }
         images = {
             "rgb": images["rgb"],
             "img_size": images["img_size"],
             "pixel_per_batch": self.pixel_per_batch,
-            "total_pixels": self.total_pixels,
             "mask": images["mask"],
         }
         return inputs, images
@@ -250,11 +254,10 @@ class ValDataset(torch.utils.data.Dataset):
 class TestDataset(torch.utils.data.Dataset):
     def __init__(self, metainfo, split):
         self.dataset = Dataset(metainfo, split)
-
-        self.img_size = self.dataset.img_size
-
-        self.total_pixels = np.prod(self.img_size)
-        self.pixel_per_batch = split.pixel_per_batch
+        if split.output_img_size:
+            self.output_img_size = tuple(split.output_img_size)
+        else:
+            self.output_img_size = self.dataset.img_size
 
     def __len__(self):
         return len(self.dataset)
@@ -262,20 +265,24 @@ class TestDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         data = self.dataset[idx]
 
+        x = np.linspace(-0.5, 0.5, self.output_img_size[0], endpoint=False)
+        y = np.linspace(-0.5, 0.5, self.output_img_size[1], endpoint=False)
+        uv = np.meshgrid(x, y, indexing="xy")  # (2, h, w)
+        u = uv[0] * (self.dataset.img_size[0] / self.output_img_size[0])
+        v = uv[1] * (self.dataset.img_size[1] / self.output_img_size[1])
+        uv = np.stack([u, v], axis=-1)  # (h, w, 2)
+        uv = flip_y_2d_points(uv, y_range=[-0.5, 0.5])
+        uv = uv.reshape(-1, 2).astype(np.float32)
+
         inputs, images = data
-        inputs = {
-            "uv": inputs["uv"],
-            # "intrinsics": inputs["intrinsics"],
-            # "pose": inputs["pose"],
+        data = {
+            "rgb": images["rgb"],
+            "mask": images["mask"],
+            "uv": uv,
             "camera_poses": inputs["camera_poses"],
             "camera_rotates": inputs["camera_rotates"],
             # "smpl_params": inputs["smpl_params"],
-            "idx": inputs["idx"],
+            "idx": idx,
             "scale": inputs["scale"],
         }
-        images = {
-            "rgb": images["rgb"],
-            "img_size": images["img_size"],
-            "mask": images["mask"],
-        }
-        return inputs, images, self.pixel_per_batch, self.total_pixels, idx
+        return data
