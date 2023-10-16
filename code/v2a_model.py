@@ -140,23 +140,23 @@ class V2AModel(pl.LightningModule):
         return loss_output["loss"]
 
     def training_epoch_end(self, outputs) -> None:
-        cond = {"smpl": torch.zeros(1, 69).float().cuda()}
-        mesh_canonical = generate_mesh(
-            lambda x: self.get_sdf_from_canonical(x, cond),
-            self.model.smpl_server.verts_c[0],
-            point_batch=10000,
-            res_up=2,
-        )
-        self.model.mesh_v_cano = torch.tensor(
-            mesh_canonical.vertices[None], device=self.model.mesh_v_cano.device
-        ).float()
-        self.model.mesh_f_cano = torch.tensor(
-            mesh_canonical.faces.astype(np.int64),
-            device=self.model.mesh_v_cano.device,
-        )
-        self.model.mesh_face_vertices = index_vertices_by_faces(
-            self.model.mesh_v_cano, self.model.mesh_f_cano
-        )
+        # cond = {"smpl": torch.zeros(1, 69).float().cuda()}
+        # mesh_canonical = generate_mesh(
+        #     lambda x: self.get_sdf_from_canonical(x, cond),
+        #     self.model.smpl_server.verts_c[0],
+        #     point_batch=10000,
+        #     res_up=2,
+        # )
+        # self.model.mesh_v_cano = torch.tensor(
+        #     mesh_canonical.vertices[None], device=self.model.mesh_v_cano.device
+        # ).float()
+        # self.model.mesh_f_cano = torch.tensor(
+        #     mesh_canonical.faces.astype(np.int64),
+        #     device=self.model.mesh_v_cano.device,
+        # )
+        # self.model.mesh_face_vertices = index_vertices_by_faces(
+        #     self.model.mesh_v_cano, self.model.mesh_f_cano
+        # )
         return super().training_epoch_end(outputs)
 
     def get_sdf_from_canonical(self, x, cond):
@@ -187,17 +187,17 @@ class V2AModel(pl.LightningModule):
         inputs["smpl_trans"] = body_model_params["transl"]
 
         cond = {"smpl": inputs["smpl_pose"][:, 3:] / np.pi}
-        mesh_canonical = generate_mesh(
-            lambda x: self.get_sdf_from_canonical(x, cond),
-            self.model.smpl_server.verts_c[0],
-            point_batch=10000,
-            res_up=3,
-        )
+        # mesh_canonical = generate_mesh(
+        #     lambda x: self.get_sdf_from_canonical(x, cond),
+        #     self.model.smpl_server.verts_c[0],
+        #     point_batch=10000,
+        #     res_up=3,
+        # )
 
-        mesh_canonical = trimesh.Trimesh(
-            mesh_canonical.vertices, mesh_canonical.faces)
+        # mesh_canonical = trimesh.Trimesh(
+        #     mesh_canonical.vertices, mesh_canonical.faces)
 
-        output.update({"canonical_mesh": mesh_canonical})
+        # output.update({"canonical_mesh": mesh_canonical})
 
         total_pixels = targets["img_size"][0] * targets["img_size"][1]
         total_pixels = int(total_pixels.cpu().numpy())
@@ -283,8 +283,8 @@ class V2AModel(pl.LightningModule):
         os.makedirs("normal", exist_ok=True)
         os.makedirs("fg_rendering", exist_ok=True)
 
-        canonical_mesh = outputs[0]["canonical_mesh"]
-        canonical_mesh.export(f"rendering/{self.current_epoch}.ply")
+        # canonical_mesh = outputs[0]["canonical_mesh"]
+        # canonical_mesh.export(f"rendering/{self.current_epoch}.ply")
 
         cv2.imwrite(f"rendering/{self.current_epoch}.png", rgb[:, :, ::-1])
         cv2.imwrite(f"normal/{self.current_epoch}.png", normal[:, :, ::-1])

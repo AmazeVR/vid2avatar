@@ -1,7 +1,7 @@
 metainfo:
     gender: 'male'
-    data_dir : data_tpain_12fps/
-    subject: "data_tpain_12fps"
+    data_dir : data_remove_bg/
+    subject: "data_remove_bg"
     start_frame: 0
     end_frame: 100
     img_size: [960, 960]

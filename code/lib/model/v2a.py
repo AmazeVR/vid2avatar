@@ -124,8 +124,6 @@ class V2A(nn.Module):
     def forward(self, input):
         # Parse model input
         torch.set_grad_enabled(True)
-        # intrinsics = input["intrinsics"]
-        # pose = input["pose"]
         uv = input["uv"]
         camera_pos = input["camera_poses"]
         camera_rotate = input["camera_rotates"]
@@ -141,9 +139,6 @@ class V2A(nn.Module):
         smpl_tfs = smpl_output["smpl_tfs"]
 
         cond = {"smpl": smpl_pose[:, 3:] / np.pi}
-        # if self.training:
-        #     if input["current_epoch"] < 20 or input["current_epoch"] % 20 == 0:
-        #         cond = {"smpl": smpl_pose[:, 3:] * 0.0}
 
         ray_dirs, cam_loc = utils.get_camera_params_equirect(
             uv, camera_pos=camera_pos, camera_rotate=camera_rotate
@@ -211,11 +206,6 @@ class V2A(nn.Module):
             )
             grad_theta = None
 
-        # differentiable_points = differentiable_points.view(-1, 3)
-        # sdf_output = sdf_output.view(-1, 1)
-        # view = -dirs.view(-1, 3)
-        # points_flat = points.view(-1, 3)
-
         view = -dirs
 
         if differentiable_points.shape[0] > 0:
@@ -230,71 +220,13 @@ class V2A(nn.Module):
             )
             normal_values = others["normals"]
 
-        if "image_id" in input.keys():
-            frame_latent_code = self.frame_latent_encoder(input["image_id"])
-        else:
-            frame_latent_code = self.frame_latent_encoder(input["idx"])
-
         fg_rgb = fg_rgb_flat.view(batch_size, num_pixels, N_samples, 3)
         normal_values = normal_values.view(
             batch_size, num_pixels, N_samples, 3)
         weights, bg_transmittance = self.volume_rendering(
             z_vals, z_max, sdf_output)
 
-        fg_rgb_values = torch.sum(weights.unsqueeze(-1) * fg_rgb, 2)
-
-        # Background rendering
-        if input["idx"] is not None:
-            N_bg_samples = z_vals_bg.shape[2]
-            z_vals_bg = torch.flip(
-                z_vals_bg,
-                dims=[
-                    -1,
-                ],
-            )  # 1--->0
-
-            bg_dirs = ray_dirs.unsqueeze(2).repeat(1, 1, N_bg_samples, 1)
-            bg_locs = cam_loc.unsqueeze(2).repeat(1, 1, N_bg_samples, 1)
-
-            bg_points = self.depth2pts_outside(
-                bg_locs, bg_dirs, z_vals_bg
-            )  # [..., N_samples, 4]
-
-            bg_points_flat = einops.rearrange(
-                bg_points, "b n s p -> b (n s) p")
-            bg_dirs_flat = einops.rearrange(bg_dirs, "b n s p -> b (n s) p")
-            bg_output = self.bg_implicit_network(
-                bg_points_flat, {"frame": frame_latent_code}
-            )
-            bg_sdf = bg_output[..., :1]
-            bg_sdf = bg_sdf.view(batch_size, num_pixels, N_bg_samples)
-
-            bg_feature_vectors = bg_output[..., 1:]
-
-            bg_rendering_output = self.bg_rendering_network(
-                None, None, bg_dirs_flat, None, bg_feature_vectors, frame_latent_code
-            )
-            if bg_rendering_output.shape[-1] == 4:
-                bg_rgb_flat = bg_rendering_output[..., :-1]
-                shadow_r = bg_rendering_output[..., -1]
-                bg_rgb = bg_rgb_flat.view(
-                    batch_size, num_pixels, N_bg_samples, 3)
-                shadow_r = shadow_r.view(
-                    batch_size, num_pixels, N_bg_samples, 1)
-                bg_rgb = (1 - shadow_r) * bg_rgb
-            else:
-                bg_rgb_flat = bg_rendering_output
-                bg_rgb = bg_rgb_flat.view(
-                    batch_size, num_pixels, N_bg_samples, 3)
-            bg_weights = self.bg_volume_rendering(z_vals_bg, bg_sdf)
-            bg_rgb_values = torch.sum(bg_weights.unsqueeze(-1) * bg_rgb, 2)
-        else:
-            bg_rgb_values = torch.ones_like(
-                fg_rgb_values, device=fg_rgb_values.device)
-
-        # Composite foreground and background
-        bg_rgb_values = bg_transmittance.unsqueeze(-1) * bg_rgb_values
-        rgb_values = fg_rgb_values + bg_rgb_values
+        rgb_values = torch.sum(weights.unsqueeze(-1) * fg_rgb, 2)
 
         normal_values = torch.sum(weights.unsqueeze(-1) * normal_values, 2)
 
@@ -316,13 +248,10 @@ class V2A(nn.Module):
                 "epoch": input["current_epoch"],
             }
         else:
-            fg_output_rgb = fg_rgb_values + bg_transmittance.unsqueeze(
-                -1
-            ) * torch.ones_like(fg_rgb_values, device=fg_rgb_values.device)
             output = {
                 "acc_map": torch.sum(weights, -1),
                 "rgb_values": rgb_values,
-                "fg_rgb_values": fg_output_rgb,
+                "fg_rgb_values": rgb_values,
                 "normal_values": normal_values,
                 "sdf_output": sdf_output,
                 "depth": depth,

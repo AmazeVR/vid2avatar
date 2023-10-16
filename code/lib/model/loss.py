@@ -45,14 +45,16 @@ class Loss(nn.Module):
     # Global opacity sparseness regularization
     def get_opacity_sparse_loss(self, acc_map, index_off_surface):
         opacity_sparse_loss = self.l1_loss(
-            acc_map[index_off_surface], torch.zeros_like(acc_map[index_off_surface])
+            acc_map[index_off_surface], torch.zeros_like(
+                acc_map[index_off_surface])
         )
         return opacity_sparse_loss
 
     # Optional: This loss helps to stablize the training in the very beginning
     def get_in_shape_loss(self, acc_map, index_in_surface):
         in_shape_loss = self.l1_loss(
-            acc_map[index_in_surface], torch.ones_like(acc_map[index_in_surface])
+            acc_map[index_in_surface], torch.ones_like(
+                acc_map[index_in_surface])
         )
         return in_shape_loss
 
@@ -62,7 +64,10 @@ class Loss(nn.Module):
 
     def forward(self, model_outputs, ground_truth):
         nan_filter = ~torch.any(model_outputs["rgb_values"].isnan(), dim=-1)
-        rgb_gt = ground_truth["rgb"].cuda()
+        rgb_gt = ground_truth["rgb"]
+        mask = ground_truth["mask"]
+
+        rgb_gt = rgb_gt * mask[..., None]
 
         # inside_idx = (ground_truth["mask"] > 0).squeeze(0)
         # rgb_inside_loss = self.get_rgb_loss(
@@ -92,7 +97,8 @@ class Loss(nn.Module):
         in_shape_loss = self.get_in_shape_loss(
             model_outputs["acc_map"], model_outputs["index_in_surface"]
         )
-        mask_loss = self.get_mask_loss(model_outputs["acc_map"], ground_truth["mask"])
+        mask_loss = self.get_mask_loss(
+            model_outputs["acc_map"], ground_truth["mask"])
         curr_epoch_for_loss = min(
             self.milestone, model_outputs["epoch"]
         )  # will not increase after the milestone
@@ -101,12 +107,10 @@ class Loss(nn.Module):
             rgb_loss
             + self.eikonal_weight * eikonal_loss
             + self.bce_weight * bce_loss
-            + self.opacity_sparse_weight
-            * (1 + curr_epoch_for_loss**2 / 40)
-            * opacity_sparse_loss
-            + self.in_shape_weight
-            * (1 - curr_epoch_for_loss / self.milestone)
-            * in_shape_loss
+            + self.opacity_sparse_weight *
+            (1 + curr_epoch_for_loss**2 / 40) * opacity_sparse_loss
+            + self.in_shape_weight *
+            (1 - curr_epoch_for_loss / self.milestone) * in_shape_loss
             # + self.mask_weight * mask_loss
         )
         return {
