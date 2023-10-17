@@ -30,28 +30,6 @@ rendering_network:
     dims: [ 256, 256, 256, 256]
     weight_norm: True
     multires_view: -1
-bg_implicit_network:
-    feature_vector_size: 256
-    d_in: 4
-    d_out: 1
-    dims: [ 256, 256, 256, 256, 256, 256, 256, 256 ]
-    init: 'none'
-    bias: 0.0
-    skip_in: [4]
-    weight_norm: False
-    embedder_mode: 'fourier'
-    multires: 10
-    cond: 'frame'
-    dim_frame_encoding: 32
-bg_rendering_network:
-    feature_vector_size: 256
-    mode: 'nerf_frame_encoding'
-    d_in: 3
-    d_out: 3
-    dims: [128]
-    weight_norm: False
-    multires_view: 4
-    dim_frame_encoding: 32
 shadow_network:
     d_in: 3
     d_out: 1
@@ -68,7 +46,6 @@ ray_sampler:
     eps: 0.1
     beta_iters: 10
     max_total_iters: 5
-    N_samples_inverse_sphere: 32
     add_tiny: 1.0e-6
 loss:
     eikonal_weight : 0.1

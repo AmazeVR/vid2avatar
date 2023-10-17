@@ -37,23 +37,27 @@ def generate_mesh(func, verts, level_set=0, res_init=32, res_up=3, point_batch=5
     value_grid = mesh_extractor.to_dense()
 
     # marching cube
-    verts, faces, normals, values = measure.marching_cubes_lewiner(
-        volume=value_grid, gradient_direction="ascent", level=level_set
-    )
+    try:
+        verts, faces, normals, values = measure.marching_cubes_lewiner(
+            volume=value_grid, gradient_direction="ascent", level=level_set
+        )
+        verts = (verts / mesh_extractor.resolution - 0.5) * scale
+        verts = verts * gt_scale + gt_center
+        faces = faces[:, [0, 2, 1]]
+        meshexport = trimesh.Trimesh(
+            verts, faces, normals, vertex_colors=values)
 
-    verts = (verts / mesh_extractor.resolution - 0.5) * scale
-    verts = verts * gt_scale + gt_center
-    faces = faces[:, [0, 2, 1]]
-    meshexport = trimesh.Trimesh(verts, faces, normals, vertex_colors=values)
+        # remove disconnect part
+        connected_comp = meshexport.split(only_watertight=False)
+        max_area = 0
+        max_comp = None
+        for comp in connected_comp:
+            if comp.area > max_area:
+                max_area = comp.area
+                max_comp = comp
+        meshexport = max_comp
 
-    # remove disconnect part
-    connected_comp = meshexport.split(only_watertight=False)
-    max_area = 0
-    max_comp = None
-    for comp in connected_comp:
-        if comp.area > max_area:
-            max_area = comp.area
-            max_comp = comp
-    meshexport = max_comp
+    except:
+        meshexport = None
 
     return meshexport

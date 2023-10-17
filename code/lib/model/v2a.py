@@ -33,14 +33,6 @@ class V2A(nn.Module):
         self.implicit_network = ImplicitNet(opt.implicit_network)
         self.rendering_network = RenderingNet(opt.rendering_network)
 
-        # Background networks
-        self.bg_implicit_network = ImplicitNet(opt.bg_implicit_network)
-        self.bg_rendering_network = RenderingNet(opt.bg_rendering_network)
-
-        # Frame latent encoder
-        self.frame_latent_encoder = nn.Embedding(
-            num_training_frames, opt.bg_rendering_network.dim_frame_encoding
-        )
         self.sampler = PointInSpace()
 
         betas = np.load(betas_path)
@@ -54,10 +46,9 @@ class V2A(nn.Module):
         self.threshold = 0.05
 
         self.density = LaplaceDensity(**opt.density)
-        self.bg_density = AbsDensity()
 
         self.ray_sampler = ErrorBoundSampler(
-            self.sdf_bounding_sphere, inverse_sphere_bg=True, **opt.ray_sampler
+            self.sdf_bounding_sphere, **opt.ray_sampler
         )
         self.smpl_server = SMPLServer(gender=self.gender, betas=betas)
 
@@ -151,7 +142,6 @@ class V2A(nn.Module):
             ray_dirs, cam_loc, self, cond, smpl_output
         )
 
-        z_vals, z_vals_bg = z_vals
         z_max = z_vals[:, :, -1]
         z_vals = z_vals[:, :, :-1]
         N_samples = z_vals.shape[2]
@@ -209,7 +199,7 @@ class V2A(nn.Module):
         view = -dirs
 
         if differentiable_points.shape[0] > 0:
-            fg_rgb_flat, others = self.get_rbg_value(
+            rgb_flat, others = self.get_rbg_value(
                 points,
                 differentiable_points,
                 view,
@@ -220,13 +210,13 @@ class V2A(nn.Module):
             )
             normal_values = others["normals"]
 
-        fg_rgb = fg_rgb_flat.view(batch_size, num_pixels, N_samples, 3)
+        rgb = rgb_flat.view(batch_size, num_pixels, N_samples, 3)
         normal_values = normal_values.view(
             batch_size, num_pixels, N_samples, 3)
-        weights, bg_transmittance = self.volume_rendering(
+        weights = self.volume_rendering(
             z_vals, z_max, sdf_output)
 
-        rgb_values = torch.sum(weights.unsqueeze(-1) * fg_rgb, 2)
+        rgb_values = torch.sum(weights.unsqueeze(-1) * rgb, 2)
 
         normal_values = torch.sum(weights.unsqueeze(-1) * normal_values, 2)
 
@@ -251,7 +241,6 @@ class V2A(nn.Module):
             output = {
                 "acc_map": torch.sum(weights, -1),
                 "rgb_values": rgb_values,
-                "fg_rgb_values": rgb_values,
                 "normal_values": normal_values,
                 "sdf_output": sdf_output,
                 "depth": depth,
@@ -274,11 +263,11 @@ class V2A(nn.Module):
 
         view_dirs = einops.rearrange(view_dirs, "b n s p -> b (n s) p")
 
-        fg_rendering_output = self.rendering_network(
+        rendering_output = self.rendering_network(
             pnts_c, normals, view_dirs, cond["smpl"], feature_vectors
         )
 
-        rgb_vals = fg_rendering_output[..., :3]
+        rgb_vals = rendering_output[..., :3]
         others["normals"] = normals
         return rgb_vals, others
 
@@ -335,8 +324,8 @@ class V2A(nn.Module):
         free_energy = dists * density
         shifted_free_energy = torch.cat(
             [
-                torch.zeros(dists.shape[0], dists.shape[1], 1).to(
-                    z_vals.device),
+                torch.zeros(dists.shape[0], dists.shape[1],
+                            1, device=z_vals.device),
                 free_energy,
             ],
             dim=-1,
@@ -346,54 +335,10 @@ class V2A(nn.Module):
         transmittance = torch.exp(
             -torch.cumsum(shifted_free_energy, dim=-1)
         )  # probability of everything is empty up to now
-        fg_transmittance = transmittance[..., :-1]
-        weights = alpha * fg_transmittance  # probability of the ray hits something here
-        bg_transmittance = transmittance[
-            ..., -1
-        ]  # factor to be multiplied with the bg volume rendering
+        # probability of the ray hits something here
+        weights = alpha * transmittance[..., :-1]
 
-        return weights, bg_transmittance
-
-    def bg_volume_rendering(self, z_vals_bg, bg_sdf):
-        bg_density = self.bg_density(bg_sdf)
-        # bg_density = bg_density_flat.view(
-        #     -1, z_vals_bg.shape[1]
-        # )  # (batch_size * num_pixels) x N_samples
-
-        bg_dists = z_vals_bg[..., :-1] - z_vals_bg[..., 1:]
-        bg_dists = torch.cat(
-            [
-                bg_dists,
-                torch.tensor([1e10])
-                .to(z_vals_bg.device)
-                .unsqueeze(0)
-                .unsqueeze(1)
-                .repeat(bg_dists.shape[0], bg_dists.shape[1], 1),
-            ],
-            -1,
-        )
-
-        # LOG SPACE
-        bg_free_energy = bg_dists * bg_density
-        bg_shifted_free_energy = torch.cat(
-            [
-                torch.zeros(bg_dists.shape[0], bg_dists.shape[1], 1).to(
-                    z_vals_bg.device
-                ),
-                bg_free_energy[..., :-1],
-            ],
-            dim=-1,
-        )  # shift one step
-        # probability of it is not empty here
-        bg_alpha = 1 - torch.exp(-bg_free_energy)
-        bg_transmittance = torch.exp(
-            -torch.cumsum(bg_shifted_free_energy, dim=-1)
-        )  # probability of everything is empty up to now
-        bg_weights = (
-            bg_alpha * bg_transmittance
-        )  # probability of the ray hits something here
-
-        return bg_weights
+        return weights
 
     def depth2pts_outside(self, ray_o, ray_d, depth):
         """

@@ -10,7 +10,7 @@ class Loss(nn.Module):
         self.bce_weight = opt.bce_weight
         self.opacity_sparse_weight = opt.opacity_sparse_weight
         self.in_shape_weight = opt.in_shape_weight
-        self.mask_weight = opt.mask_weight
+        # self.mask_weight = opt.mask_weight
         self.eps = 1e-6
         self.milestone = 200
         self.l1_loss = nn.L1Loss(reduction="mean")
@@ -58,9 +58,9 @@ class Loss(nn.Module):
         )
         return in_shape_loss
 
-    def get_mask_loss(self, acc_map, target_mask):
-        mask_loss = self.l1_loss(acc_map, target_mask)
-        return mask_loss
+    # def get_mask_loss(self, acc_map, target_mask):
+    #     mask_loss = self.l1_loss(acc_map, target_mask)
+    #     return mask_loss
 
     def forward(self, model_outputs, ground_truth):
         nan_filter = ~torch.any(model_outputs["rgb_values"].isnan(), dim=-1)
@@ -89,7 +89,7 @@ class Loss(nn.Module):
         #     bce_loss = self.get_bce_loss(model_outputs["acc_map"])
         # else:
         bce_loss = self.get_bce_loss(
-            model_outputs["acc_map"], mask=ground_truth["mask"]
+            model_outputs["acc_map"]
         )
         opacity_sparse_loss = self.get_opacity_sparse_loss(
             model_outputs["acc_map"], model_outputs["index_off_surface"]
@@ -97,8 +97,8 @@ class Loss(nn.Module):
         in_shape_loss = self.get_in_shape_loss(
             model_outputs["acc_map"], model_outputs["index_in_surface"]
         )
-        mask_loss = self.get_mask_loss(
-            model_outputs["acc_map"], ground_truth["mask"])
+        # mask_loss = self.get_mask_loss(
+        #     model_outputs["acc_map"], ground_truth["mask"])
         curr_epoch_for_loss = min(
             self.milestone, model_outputs["epoch"]
         )  # will not increase after the milestone
@@ -120,5 +120,5 @@ class Loss(nn.Module):
             "bce_loss": bce_loss,
             "opacity_sparse_loss": opacity_sparse_loss,
             "in_shape_loss": in_shape_loss,
-            "mask_loss": mask_loss,
+            # "mask_loss": mask_loss,
         }

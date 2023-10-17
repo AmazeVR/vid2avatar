@@ -1,7 +1,7 @@
 metainfo:
     gender: 'male'
-    data_dir : data_remove_bg/
-    subject: "data_remove_bg"
+    data_dir : data_remove_bg_exp2/
+    subject: "data_remove_bg_exp2"
     start_frame: 0
     end_frame: 100
     img_size: [960, 960]
@@ -46,8 +46,6 @@ test:
         is_use: True
         point_batch: 10000
     rendering:
-        is_use: True
-    fg_rendering:    
         is_use: True
     mask:
         is_use: True

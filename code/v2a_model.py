@@ -140,23 +140,24 @@ class V2AModel(pl.LightningModule):
         return loss_output["loss"]
 
     def training_epoch_end(self, outputs) -> None:
-        # cond = {"smpl": torch.zeros(1, 69).float().cuda()}
-        # mesh_canonical = generate_mesh(
-        #     lambda x: self.get_sdf_from_canonical(x, cond),
-        #     self.model.smpl_server.verts_c[0],
-        #     point_batch=10000,
-        #     res_up=2,
-        # )
-        # self.model.mesh_v_cano = torch.tensor(
-        #     mesh_canonical.vertices[None], device=self.model.mesh_v_cano.device
-        # ).float()
-        # self.model.mesh_f_cano = torch.tensor(
-        #     mesh_canonical.faces.astype(np.int64),
-        #     device=self.model.mesh_v_cano.device,
-        # )
-        # self.model.mesh_face_vertices = index_vertices_by_faces(
-        #     self.model.mesh_v_cano, self.model.mesh_f_cano
-        # )
+        cond = {"smpl": torch.zeros(1, 69).float().cuda()}
+        mesh_canonical = generate_mesh(
+            lambda x: self.get_sdf_from_canonical(x, cond),
+            self.model.smpl_server.verts_c[0],
+            point_batch=10000,
+            res_up=2,
+        )
+        if mesh_canonical is not None:
+            self.model.mesh_v_cano = torch.tensor(
+                mesh_canonical.vertices[None], device=self.model.mesh_v_cano.device
+            ).float()
+            self.model.mesh_f_cano = torch.tensor(
+                mesh_canonical.faces.astype(np.int64),
+                device=self.model.mesh_v_cano.device,
+            )
+            self.model.mesh_face_vertices = index_vertices_by_faces(
+                self.model.mesh_v_cano, self.model.mesh_f_cano
+            )
         return super().training_epoch_end(outputs)
 
     def get_sdf_from_canonical(self, x, cond):
@@ -187,17 +188,17 @@ class V2AModel(pl.LightningModule):
         inputs["smpl_trans"] = body_model_params["transl"]
 
         cond = {"smpl": inputs["smpl_pose"][:, 3:] / np.pi}
-        # mesh_canonical = generate_mesh(
-        #     lambda x: self.get_sdf_from_canonical(x, cond),
-        #     self.model.smpl_server.verts_c[0],
-        #     point_batch=10000,
-        #     res_up=3,
-        # )
+        mesh_canonical = generate_mesh(
+            lambda x: self.get_sdf_from_canonical(x, cond),
+            self.model.smpl_server.verts_c[0],
+            point_batch=10000,
+            res_up=3,
+        )
+        if mesh_canonical is not None:
+            mesh_canonical = trimesh.Trimesh(
+                mesh_canonical.vertices, mesh_canonical.faces)
 
-        # mesh_canonical = trimesh.Trimesh(
-        #     mesh_canonical.vertices, mesh_canonical.faces)
-
-        # output.update({"canonical_mesh": mesh_canonical})
+            output.update({"canonical_mesh": mesh_canonical})
 
         total_pixels = targets["img_size"][0] * targets["img_size"][1]
         total_pixels = int(total_pixels.cpu().numpy())
@@ -222,7 +223,6 @@ class V2AModel(pl.LightningModule):
                 {
                     "rgb_values": out["rgb_values"].detach(),
                     "normal_values": out["normal_values"].detach(),
-                    "fg_rgb_values": out["fg_rgb_values"].detach(),
                 }
             )
         batch_size = targets["rgb"].shape[0]
@@ -234,7 +234,6 @@ class V2AModel(pl.LightningModule):
             {
                 "rgb_values": model_outputs["rgb_values"].detach().clone(),
                 "normal_values": model_outputs["normal_values"].detach().clone(),
-                "fg_rgb_values": model_outputs["fg_rgb_values"].detach().clone(),
                 **targets,
             }
         )
@@ -247,21 +246,10 @@ class V2AModel(pl.LightningModule):
     def validation_epoch_end(self, outputs) -> None:
         img_size = outputs[0]["img_size"]
 
-        rgb_pred = torch.cat([output["rgb_values"]
-                             for output in outputs], dim=0)
-        rgb_pred = rgb_pred.view(*img_size, -1)
-
-        fg_rgb_pred = torch.cat([output["fg_rgb_values"]
-                                for output in outputs], dim=0)
-        fg_rgb_pred = fg_rgb_pred.view(*img_size, -1)
-
         normal_pred = torch.cat([output["normal_values"]
                                 for output in outputs], dim=0)
         normal_pred = (normal_pred.view(*img_size, -1) + 1) / 2
 
-        rgb_gt = torch.cat([output["rgb"]
-                           for output in outputs], dim=1).squeeze(0)
-        rgb_gt = rgb_gt.view(*img_size, -1)
         if "normal" in outputs[0].keys():
             normal_gt = torch.cat(
                 [output["normal"] for output in outputs], dim=1
@@ -270,26 +258,33 @@ class V2AModel(pl.LightningModule):
             normal = torch.cat([normal_gt, normal_pred], dim=0).cpu().numpy()
         else:
             normal = torch.cat([normal_pred], dim=0).cpu().numpy()
-
-        rgb = torch.cat([rgb_gt, rgb_pred], dim=0).cpu().numpy()
-        rgb = (rgb * 255).astype(np.uint8)
-
-        fg_rgb = torch.cat([fg_rgb_pred], dim=0).cpu().numpy()
-        fg_rgb = (fg_rgb * 255).astype(np.uint8)
-
         normal = (normal * 255).astype(np.uint8)
 
+        rgb_pred = torch.cat([output["rgb_values"]
+                             for output in outputs], dim=0)
+        rgb_pred = rgb_pred.view(*img_size, -1)
+        rgb_pred = rgb_pred.cpu().numpy()
+        rgb_pred = (rgb_pred * 255).astype(np.uint8)
+
+        rgb_gt = torch.cat([output["rgb"]
+                           for output in outputs], dim=1).squeeze(0)
+        rgb_gt = rgb_gt.view(*img_size, -1)
+        rgb_gt = rgb_gt.cpu().numpy()
+        rgb_gt = (rgb_gt * 255).astype(np.uint8)
+
         os.makedirs("rendering", exist_ok=True)
+        os.makedirs("rendering_gt", exist_ok=True)
         os.makedirs("normal", exist_ok=True)
-        os.makedirs("fg_rendering", exist_ok=True)
 
-        # canonical_mesh = outputs[0]["canonical_mesh"]
-        # canonical_mesh.export(f"rendering/{self.current_epoch}.ply")
+        if "canonical_mesh" in outputs[0]:
+            canonical_mesh = outputs[0]["canonical_mesh"]
+            canonical_mesh.export(f"rendering/{self.current_epoch}.ply")
 
-        cv2.imwrite(f"rendering/{self.current_epoch}.png", rgb[:, :, ::-1])
-        cv2.imwrite(f"normal/{self.current_epoch}.png", normal[:, :, ::-1])
         cv2.imwrite(
-            f"fg_rendering/{self.current_epoch}.png", fg_rgb[:, :, ::-1])
+            f"rendering/{self.current_epoch}.png", rgb_pred[:, :, ::-1])
+        cv2.imwrite(
+            f"rendering_gt/{self.current_epoch}.png", rgb_gt[:, :, ::-1])
+        cv2.imwrite(f"normal/{self.current_epoch}.png", normal[:, :, ::-1])
 
     def test_step(self, batch, *args, **kwargs):
         cfg = self.opt.dataset
@@ -355,7 +350,6 @@ class V2AModel(pl.LightningModule):
             results.append(
                 {
                     "rgb_values": model_outputs["rgb_values"].detach().clone(),
-                    "fg_rgb_values": model_outputs["fg_rgb_values"].detach().clone(),
                     "normal_values": model_outputs["normal_values"].detach().clone(),
                     "acc_map": model_outputs["acc_map"].detach().clone(),
                     "depth": model_outputs["depth"].detach().clone(),
@@ -442,19 +436,6 @@ class V2AModel(pl.LightningModule):
 
             cv2.imwrite(
                 f"test_rendering/{idx:04d}.png", rgb_pred)
-
-        if cfg.test.fg_rendering.is_use:
-            os.makedirs("test_fg_rendering", exist_ok=True)
-
-            fg_rgb_pred = torch.cat([result["fg_rgb_values"]
-                                    for result in results], dim=0)
-            fg_rgb_pred = fg_rgb_pred.reshape(*output_img_size, -1)
-            fg_rgb_pred = torch.cat([fg_rgb_pred], dim=0).cpu().numpy()
-            fg_rgb_pred = (fg_rgb_pred * 255).astype(np.uint8)
-            fg_rgb_pred = fg_rgb_pred[:, :, ::-1]
-
-            cv2.imwrite(
-                f"test_fg_rendering/{idx:04d}.png", fg_rgb_pred)
 
         if cfg.test.mask.is_use:
             os.makedirs("test_mask", exist_ok=True)

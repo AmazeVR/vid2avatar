@@ -32,15 +32,18 @@ class UniformSampler(RaySampler):
     def get_z_vals(self, ray_dirs, cam_loc, model):
         if not self.take_sphere_intersection:
             near, far = (
-                self.near * torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
-                self.far * torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
+                self.near *
+                torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
+                self.far *
+                torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
             )
         else:
             sphere_intersections = utils.get_sphere_intersections(
                 cam_loc, ray_dirs, r=self.scene_bounding_sphere
             )
             near = (
-                self.near * torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda()
+                self.near *
+                torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda()
             )
             far = sphere_intersections[:, :, 1:]
 
@@ -71,8 +74,6 @@ class ErrorBoundSampler(RaySampler):
         eps,
         beta_iters,
         max_total_iters,
-        inverse_sphere_bg=False,
-        N_samples_inverse_sphere=0,
         add_tiny=0.0,
     ):
         super().__init__(near, 2.0 * scene_bounding_sphere)
@@ -82,7 +83,7 @@ class ErrorBoundSampler(RaySampler):
             scene_bounding_sphere,
             near,
             N_samples_eval,
-            take_sphere_intersection=inverse_sphere_bg,
+            take_sphere_intersection=True,
         )
 
         self.N_samples_extra = N_samples_extra
@@ -92,13 +93,6 @@ class ErrorBoundSampler(RaySampler):
         self.max_total_iters = max_total_iters
         self.scene_bounding_sphere = scene_bounding_sphere
         self.add_tiny = add_tiny
-
-        self.inverse_sphere_bg = inverse_sphere_bg
-        if inverse_sphere_bg:
-            N_samples_inverse_sphere = 32
-            self.inverse_sphere_sampler = UniformSampler(
-                1.0, 0.0, N_samples_inverse_sphere, False, far=1.0
-            )
 
     def get_z_vals(self, ray_dirs, cam_loc, model, cond, smpl_output):
         smpl_tfs = smpl_output["smpl_tfs"]
@@ -175,26 +169,31 @@ class ErrorBoundSampler(RaySampler):
             s = (a + b + c) / 2.0
             area_before_sqrt = s * (s - a) * (s - b) * (s - c)
             mask = ~first_cond & ~second_cond & (b + c - a > 0)
-            d_star[mask] = (2.0 * torch.sqrt(area_before_sqrt[mask])) / (a[mask])
+            d_star[mask] = (
+                2.0 * torch.sqrt(area_before_sqrt[mask])) / (a[mask])
             d_star = (
                 d[..., 1:].sign() * d[..., :-1].sign() == 1
             ) * d_star  # Fixing the sign
 
             # Updating beta using line search
-            curr_error = self.get_error_bound(beta0, model, sdf, z_vals, dists, d_star)
+            curr_error = self.get_error_bound(
+                beta0, model, sdf, z_vals, dists, d_star)
             beta[curr_error <= self.eps] = beta0
-            beta_min, beta_max = beta0.repeat(z_vals.shape[0], z_vals.shape[1]), beta
+            beta_min, beta_max = beta0.repeat(
+                z_vals.shape[0], z_vals.shape[1]), beta
             for j in range(self.beta_iters):
                 beta_mid = (beta_min + beta_max) / 2.0
                 curr_error = self.get_error_bound(
                     beta_mid.unsqueeze(-1), model, sdf, z_vals, dists, d_star
                 )
-                beta_max[curr_error <= self.eps] = beta_mid[curr_error <= self.eps]
+                beta_max[curr_error <=
+                         self.eps] = beta_mid[curr_error <= self.eps]
                 beta_min[curr_error > self.eps] = beta_mid[curr_error > self.eps]
             beta = beta_max
 
             # Upsample more points
-            density = model.density(sdf.view(z_vals.shape), beta=beta.unsqueeze(-1))
+            density = model.density(
+                sdf.view(z_vals.shape), beta=beta.unsqueeze(-1))
 
             # TODO: need to be more clean
             # TODO: cuda -> to device
@@ -211,7 +210,8 @@ class ErrorBoundSampler(RaySampler):
             free_energy = dists * density
             shifted_free_energy = torch.cat(
                 [
-                    torch.zeros(dists.shape[0], dists.shape[1], 1).to(dists.device),
+                    torch.zeros(dists.shape[0], dists.shape[1], 1).to(
+                        dists.device),
                     free_energy[..., :-1],
                 ],
                 dim=-1,
@@ -277,7 +277,8 @@ class ErrorBoundSampler(RaySampler):
 
             inds = torch.searchsorted(cdf, u, right=True)
             below = torch.max(torch.zeros_like(inds - 1), inds - 1)
-            above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)
+            above = torch.min((cdf.shape[-1] - 1)
+                              * torch.ones_like(inds), inds)
             inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
 
             matched_shape = [
@@ -286,8 +287,10 @@ class ErrorBoundSampler(RaySampler):
                 inds_g.shape[2],
                 cdf.shape[-1],
             ]
-            cdf_g = torch.gather(cdf.unsqueeze(2).expand(matched_shape), -1, inds_g)
-            bins_g = torch.gather(bins.unsqueeze(2).expand(matched_shape), -1, inds_g)
+            cdf_g = torch.gather(cdf.unsqueeze(
+                2).expand(matched_shape), -1, inds_g)
+            bins_g = torch.gather(bins.unsqueeze(
+                2).expand(matched_shape), -1, inds_g)
 
             denom = cdf_g[..., 1] - cdf_g[..., 0]
             denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
@@ -296,29 +299,28 @@ class ErrorBoundSampler(RaySampler):
 
             # Adding samples if we not converged
             if not_converge and total_iters < self.max_total_iters:
-                z_vals, samples_idx = torch.sort(torch.cat([z_vals, samples], -1), -1)
+                z_vals, samples_idx = torch.sort(
+                    torch.cat([z_vals, samples], -1), -1)
 
         z_samples = samples
 
-        near, far = (
-            self.near * torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
-            self.far * torch.ones(ray_dirs.shape[0], ray_dirs.shape[1], 1).cuda(),
-        )
-        if (
-            self.inverse_sphere_bg
-        ):  # if inverse sphere then need to add the far sphere intersection
-            far = utils.get_sphere_intersections(
-                cam_loc, ray_dirs, r=self.scene_bounding_sphere
-            )[:, :, 1:]
+        near = self.near * \
+            torch.ones(
+                ray_dirs.shape[0], ray_dirs.shape[1], 1, device=ray_dirs.device)
+        far = utils.get_sphere_intersections(
+            cam_loc, ray_dirs, r=self.scene_bounding_sphere
+        )[:, :, 1:]
 
         if self.N_samples_extra > 0:
             if model.training:
-                sampling_idx = torch.randperm(z_vals.shape[2])[: self.N_samples_extra]
+                sampling_idx = torch.randperm(z_vals.shape[2])[
+                    : self.N_samples_extra]
             else:
                 sampling_idx = torch.linspace(
                     0, z_vals.shape[2] - 1, self.N_samples_extra
                 ).long()
-            z_vals_extra = torch.cat([near, far, z_vals[:, :, sampling_idx]], -1)
+            z_vals_extra = torch.cat(
+                [near, far, z_vals[:, :, sampling_idx]], -1)
         else:
             z_vals_extra = torch.cat([near, far], -1)
 
@@ -334,28 +336,21 @@ class ErrorBoundSampler(RaySampler):
         ).cuda()
         z_samples_eik = torch.gather(z_vals, 2, idx.unsqueeze(-1))
 
-        if self.inverse_sphere_bg:
-            z_vals_inverse_sphere = self.inverse_sphere_sampler.get_z_vals(
-                ray_dirs, cam_loc, model
-            )
-            z_vals_inverse_sphere = z_vals_inverse_sphere * (
-                1.0 / self.scene_bounding_sphere
-            )
-            z_vals = (z_vals, z_vals_inverse_sphere)
-
         return z_vals, z_samples_eik
 
     def get_error_bound(self, beta, model, sdf, z_vals, dists, d_star):
         density = model.density(sdf.squeeze(-1).view(z_vals.shape), beta=beta)
         shifted_free_energy = torch.cat(
             [
-                torch.zeros(dists.shape[0], dists.shape[1], 1).to(dists.device),
+                torch.zeros(dists.shape[0], dists.shape[1], 1).to(
+                    dists.device),
                 dists * density[..., :-1],
             ],
             dim=-1,
         )
         integral_estimation = torch.cumsum(shifted_free_energy, dim=-1)
-        error_per_section = torch.exp(-d_star / beta) * (dists**2.0) / (4 * beta**2)
+        error_per_section = torch.exp(-d_star / beta) * \
+            (dists**2.0) / (4 * beta**2)
         error_integral = torch.cumsum(error_per_section, dim=-1)
         bound_opacity = (
             torch.clamp(torch.exp(error_integral), max=1.0e6) - 1.0
