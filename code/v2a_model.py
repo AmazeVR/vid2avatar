@@ -296,6 +296,7 @@ class V2AModel(pl.LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         cfg = self.opt.dataset
+        epoch = self.current_epoch
 
         img_size = cfg.metainfo.img_size
         output_img_size = cfg.test.output_img_size if cfg.test.output_img_size is not None else img_size
@@ -368,7 +369,7 @@ class V2AModel(pl.LightningModule):
 
         if cfg.test.rendering_gt.is_use:
             # rgb gt
-            os.makedirs("test_rendering_gt", exist_ok=True)
+            os.makedirs(f"test_rendering_gt/epoch-{epoch}", exist_ok=True)
 
             rgb_gt = batch['rgb']
             rgb_gt = rgb_gt.reshape(*img_size, -1)
@@ -377,10 +378,10 @@ class V2AModel(pl.LightningModule):
             rgb_gt = rgb_gt[:, :, ::-1]
 
             cv2.imwrite(
-                f"test_rendering_gt/{idx:04d}.png", rgb_gt)
+                f"test_rendering_gt/epoch-{epoch}/{idx:04d}.png", rgb_gt)
 
         if cfg.test.normal_map.is_use:
-            os.makedirs("test_normal", exist_ok=True)
+            os.makedirs(f"test_normal/epoch-{epoch}", exist_ok=True)
 
             normal_pred = torch.cat([result["normal_values"]
                                     for result in results], dim=0)
@@ -390,10 +391,10 @@ class V2AModel(pl.LightningModule):
             normal_pred = normal_pred[:, :, ::-1]
 
             cv2.imwrite(
-                f"test_normal/{idx:04d}.png", normal_pred)
+                f"test_normal/epoch-{epoch}/{idx:04d}.png", normal_pred)
 
         if cfg.test.depth_map.is_use:
-            os.makedirs("test_depth", exist_ok=True)
+            os.makedirs(f"test_depth/epoch-{epoch}", exist_ok=True)
 
             depth_pred = torch.cat([result["depth"]
                                     for result in results], dim=0)
@@ -407,10 +408,10 @@ class V2AModel(pl.LightningModule):
             # depth = cv2.applyColorMap(depth, cv2.COLORMAP_JET)
 
             cv2.imwrite(
-                f"test_depth/{idx:04d}.png", depth_pred)
+                f"test_depth/epoch-{epoch}/{idx:04d}.png", depth_pred)
 
         if cfg.test.mesh.is_use:
-            os.makedirs("test_mesh", exist_ok=True)
+            os.makedirs(f"test_mesh/epoch-{epoch}", exist_ok=True)
 
             mesh_canonical = generate_mesh(
                 lambda x: self.get_sdf_from_canonical(x, cond),
@@ -428,12 +429,12 @@ class V2AModel(pl.LightningModule):
             )
 
             mesh_canonical.export(
-                f"test_mesh/{idx:04d}_canonical.ply")
+                f"test_mesh/epoch-{epoch}/{idx:04d}_canonical.ply")
             mesh_deformed.export(
-                f"test_mesh/{idx:04d}_deformed.ply")
+                f"test_mesh/epoch-{epoch}/{idx:04d}_deformed.ply")
 
         if cfg.test.rendering.is_use:
-            os.makedirs("test_rendering", exist_ok=True)
+            os.makedirs(f"test_rendering/epoch-{epoch}", exist_ok=True)
 
             rgb_pred = torch.cat([result["rgb_values"]
                                   for result in results], dim=0)
@@ -443,10 +444,10 @@ class V2AModel(pl.LightningModule):
             rgb_pred = rgb_pred[:, :, ::-1]
 
             cv2.imwrite(
-                f"test_rendering/{idx:04d}.png", rgb_pred)
+                f"test_rendering/epoch-{epoch}/{idx:04d}.png", rgb_pred)
 
         if cfg.test.mask.is_use:
-            os.makedirs("test_mask", exist_ok=True)
+            os.makedirs(f"test_mask/epoch-{epoch}", exist_ok=True)
 
             pred_mask = torch.cat([result["acc_map"]
                                   for result in results], dim=0)
@@ -454,10 +455,10 @@ class V2AModel(pl.LightningModule):
             pred_mask = pred_mask.cpu().numpy() * 255
 
             cv2.imwrite(
-                f"test_mask/{idx:04d}.png", pred_mask)
+                f"test_mask/epoch-{epoch}/{idx:04d}.png", pred_mask)
 
         if cfg.test.relight.is_use:
-            os.makedirs("test_relight", exist_ok=True)
+            os.makedirs(f"test_relight/epoch-{epoch}", exist_ok=True)
 
             rgb_gt = batch['rgb']
             uv = batch["uv"]
@@ -500,7 +501,7 @@ class V2AModel(pl.LightningModule):
             relighted_rgb = relighted_rgb[:, :, ::-1]
 
             cv2.imwrite(
-                f"test_relight/{idx:04d}.png", relighted_rgb)
+                f"test_relight/epoch-{epoch}/{idx:04d}.png", relighted_rgb)
 
 
 def phong_lighting(normal_map,
