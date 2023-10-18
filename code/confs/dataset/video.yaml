@@ -1,7 +1,7 @@
 metainfo:
     gender: 'male'
-    data_dir : data_remove_bg_exp2/
-    subject: "data_remove_bg_exp2"
+    data_dir : data_remove_bg_exp3/
+    subject: "data_remove_bg_exp3"
     start_frame: 0
     end_frame: 100
     img_size: [960, 960]

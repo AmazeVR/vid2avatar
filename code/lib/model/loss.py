@@ -88,9 +88,10 @@ class Loss(nn.Module):
         # if model_outputs["epoch"] < 20 or model_outputs["epoch"] % 20 == 0:
         #     bce_loss = self.get_bce_loss(model_outputs["acc_map"])
         # else:
+
         bce_loss = self.get_bce_loss(
-            model_outputs["acc_map"]
-        )
+            model_outputs["acc_map"], mask=mask)
+
         opacity_sparse_loss = self.get_opacity_sparse_loss(
             model_outputs["acc_map"], model_outputs["index_off_surface"]
         )

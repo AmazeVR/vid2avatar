@@ -86,14 +86,21 @@ class V2AModel(pl.LightningModule):
 
     def configure_optimizers(self):
         params = [
-            {"params": self.model.parameters(), "lr": self.opt.model.learning_rate}
+            {"params": self.model.parameters(),
+             "lr": self.opt.model.learning_rate
+             }
         ]
-        body_params = [
-            {
-                "params": self.body_model_params.parameters(),
-                "lr": self.opt.model.body_param_learning_rate,
-            }
-        ]
+
+        body_model_params = list(self.body_model_params.parameters())
+
+        body_shape_params = {
+            "params": body_model_params[:1],
+            "lr": self.opt.model.body_shape_param_learning_rate,
+        }
+        body_params = {
+            "params": body_model_params[1:],
+            "lr": self.opt.model.body_param_learning_rate,
+        }
 
         optimizer = optim.Adam(
             params, lr=self.opt.model.learning_rate, eps=1e-8)
@@ -103,9 +110,10 @@ class V2AModel(pl.LightningModule):
             gamma=self.opt.model.sched_factor,
         )
 
-        body_param_optimizer = optim.RMSprop(
-            body_params, lr=self.opt.model.body_param_learning_rate
-        )
+        body_param_optimizer = optim.RMSprop([
+            body_shape_params, body_params
+        ], lr=self.opt.model.body_param_learning_rate)
+
         return optimizer, body_param_optimizer
 
     def training_step(self, batch):
