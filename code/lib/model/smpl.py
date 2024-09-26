@@ -48,7 +48,9 @@ class SMPLServer(torch.nn.Module):
         )
         self.verts_c = output["smpl_verts"]
         self.joints_c = output["smpl_jnts"]
-        self.tfs_c_inv = output["smpl_tfs"].squeeze(0).inverse()
+        self.tfs_c = output["smpl_tfs"].squeeze(0)
+        self.tfs_c_inv = self.tfs_c.inverse()
+        
 
     def forward(self, scale, transl, thetas, betas, absolute=False):
         """return SMPL output from params
